@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Obter Localização do Usuário</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+<body>
+    <div class="container">
+        <h1>Obter Localização do Usuário e Endereço</h1>
+        <button id="get-location-btn">📍 Obter Minha Localização</button>
+        <div id="spinner" class="spinner" style="display: none;"></div> <!-- Spinner -->
+        <div id="message" class="message"></div>
+        <div id="address" class="address"></div>
+        <div id="map" class="map"></div> <!-- Div para o mapa -->
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <script>
+        document.getElementById('get-location-btn').addEventListener('click', function() {
+            const messageDiv = document.getElementById('message');
+            const addressDiv = document.getElementById('address');
+            const mapDiv = document.getElementById('map');
+            const spinnerDiv = document.getElementById('spinner');
+
+            // Limpa mensagens anteriores e esconde o mapa
+            messageDiv.innerHTML = '';
+            addressDiv.innerHTML = '';
+            mapDiv.style.display = 'none';
+            spinnerDiv.style.display = 'block'; // Mostra o spinner
+
+            // Verifica se o navegador suporta Geolocalização
+            if (navigator.geolocation) {
+                messageDiv.innerHTML = 'Obtendo sua localização...';
+
+                navigator.geolocation.getCurrentPosition(success, error);
+            } else {
+                messageDiv.innerHTML = 'Geolocalização não é suportada por este navegador.';
+                spinnerDiv.style.display = 'none'; // Esconde o spinner
+            }
+
+            // Função chamada em caso de sucesso na obtenção da localização
+            function success(position) {
+                const latitude = position.coords.latitude;
+                const longitude = position.coords.longitude;
+
+                console.log('Coordenadas obtidas:', latitude, longitude);
+
+                messageDiv.innerHTML = 'Localização obtida. Obtendo endereço...';
+
+                // Envia as coordenadas para o backend Flask
+                fetch('/get_address', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        latitude: latitude,
+                        longitude: longitude
+                    })
+                })
+                .then(response => {
+                    console.log('Resposta do servidor:', response);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Dados recebidos do servidor:', data);
+                    if (data.address) {
+                        addressDiv.innerHTML = `<strong>📍 Endereço:</strong> ${data.address}`;
+                        messageDiv.innerHTML = '';
+                        spinnerDiv.style.display = 'none'; // Esconde o spinner
+
+                        // Inicializa o mapa com Leaflet
+                        console.log('Inicializando o mapa com coordenadas:', latitude, longitude);
+                        initMap(latitude, longitude);
+                    } else if (data.error) {
+                        addressDiv.innerHTML = `<span class="error">❌ ${data.error}</span>`;
+                        messageDiv.innerHTML = '';
+                        spinnerDiv.style.display = 'none'; // Esconde o spinner
+                    }
+                })
+                .catch((err) => {
+                    addressDiv.innerHTML = `<span class="error">❌ Erro ao obter o endereço.</span>`;
+                    messageDiv.innerHTML = '';
+                    spinnerDiv.style.display = 'none'; // Esconde o spinner
+                    console.error('Erro:', err);
+                });
+            }
+
+            // Função chamada em caso de erro na obtenção da localização
+            function error(err) {
+                switch(err.code) {
+                    case err.PERMISSION_DENIED:
+                        messageDiv.innerHTML = 'Usuário negou a solicitação de geolocalização.';
+                        break;
+                    case err.POSITION_UNAVAILABLE:
+                        messageDiv.innerHTML = 'Informações de localização não disponíveis.';
+                        break;
+                    case err.TIMEOUT:
+                        messageDiv.innerHTML = 'A requisição para obter a localização expirou.';
+                        break;
+                    default:
+                        messageDiv.innerHTML = 'Ocorreu um erro desconhecido.';
+                        break;
+                }
+                spinnerDiv.style.display = 'none'; // Esconde o spinner
+            }
+
+            // Função para inicializar e exibir o mapa
+            function initMap(lat, lon) {
+                console.log('Inicializando o mapa com:', lat, lon);
+
+                // Mostra o mapa
+                mapDiv.style.display = 'block';
+
+                // Remove qualquer mapa existente para evitar sobreposições
+                if (mapDiv._leaflet_id) {
+                    console.log('Removendo mapa existente');
+                    mapDiv._leaflet_id = null;
+                    mapDiv.innerHTML = '';
+                }
+
+                // Inicializa o mapa
+                try {
+                    const map = L.map('map').setView([lat, lon], 15);
+                    console.log('Mapa inicializado');
+
+                    // Adiciona o tile layer do OpenStreetMap
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    }).addTo(map);
+                    console.log('Tile layer adicionado');
+
+                    // Adiciona um marcador na localização do usuário
+                    L.marker([lat, lon]).addTo(map)
+                        .bindPopup('Sua Localização')
+                        .openPopup();
+                    console.log('Marcador adicionado');
+                } catch (e) {
+                    console.error('Erro ao inicializar o mapa:', e);
+                }
+            }
+
+            // Teste com coordenadas fixas (Descomente para testar)
+            initMap(-23.550520, -46.633308); // Exemplo: Avenida Paulista, São Paulo
+        });
+    </script>
+</body>
+</html>
